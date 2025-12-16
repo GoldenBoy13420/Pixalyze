@@ -1,26 +1,70 @@
-"""
-Image utility functions.
-"""
+"""Image utility functions with performance optimizations."""
 import cv2
 import numpy as np
 import base64
 import io
+import hashlib
+from functools import lru_cache
 from typing import Optional, Dict, Any, Tuple
 from PIL import Image
+import threading
+import os
+
+# Thread-safe image cache
+_image_cache = {}
+_cache_lock = threading.Lock()
+_MAX_CACHE_SIZE = 50  # Maximum number of cached images
+_MAX_CACHE_BYTES = 500 * 1024 * 1024  # 500MB max cache size
+_cache_size_bytes = 0
 
 
-def load_image(filepath: str) -> Optional[np.ndarray]:
+def _get_cache_key(filepath: str) -> str:
+    """Generate cache key from filepath."""
+    stat = os.stat(filepath)
+    return f"{filepath}_{stat.st_mtime}_{stat.st_size}"
+
+
+def _evict_cache_if_needed(new_size: int) -> None:
+    """Evict oldest cache entries if needed."""
+    global _cache_size_bytes
+    with _cache_lock:
+        while (_cache_size_bytes + new_size > _MAX_CACHE_BYTES or 
+               len(_image_cache) >= _MAX_CACHE_SIZE) and _image_cache:
+            oldest_key = next(iter(_image_cache))
+            old_img = _image_cache.pop(oldest_key)
+            _cache_size_bytes -= old_img.nbytes
+
+
+def load_image(filepath: str, use_cache: bool = True) -> Optional[np.ndarray]:
     """
-    Load an image from file.
+    Load an image from file with optional caching.
     
     Args:
         filepath: Path to the image file
+        use_cache: Whether to use image cache (default True)
     
     Returns:
         Image as numpy array (BGR format) or None if failed
     """
+    global _cache_size_bytes
     try:
-        image = cv2.imread(filepath)
+        if use_cache:
+            cache_key = _get_cache_key(filepath)
+            with _cache_lock:
+                if cache_key in _image_cache:
+                    return _image_cache[cache_key].copy()
+        
+        # Use IMREAD_COLOR for consistent format
+        image = cv2.imread(filepath, cv2.IMREAD_COLOR)
+        
+        if image is not None and use_cache:
+            img_size = image.nbytes
+            _evict_cache_if_needed(img_size)
+            cache_key = _get_cache_key(filepath)
+            with _cache_lock:
+                _image_cache[cache_key] = image.copy()
+                _cache_size_bytes += img_size
+        
         return image
     except Exception:
         return None
@@ -53,34 +97,36 @@ def save_image(image: np.ndarray, filepath: str, quality: int = 95) -> bool:
         return False
 
 
-def image_to_base64(image: np.ndarray, format: str = 'png') -> str:
+def image_to_base64(image: np.ndarray, format: str = 'auto', quality: int = 85) -> str:
     """
-    Convert numpy image to base64 string.
+    Convert numpy image to base64 string with optimized compression.
     
     Args:
         image: Image as numpy array
-        format: Output format ('png', 'jpeg')
+        format: Output format ('png', 'jpeg', 'auto'). 'auto' chooses based on image size
+        quality: JPEG quality (1-100), default 85 for good balance
     
     Returns:
         Base64 encoded string with data URL prefix
     """
-    # Ensure proper format
-    if len(image.shape) == 2:
-        # Grayscale
-        pil_image = Image.fromarray(image, mode='L')
+    # Auto-select format based on image size for performance
+    if format == 'auto':
+        # Use JPEG for larger images (faster encoding, smaller size)
+        pixels = image.shape[0] * image.shape[1]
+        format = 'jpeg' if pixels > 500000 else 'png'  # ~700x700 threshold
+    
+    # Use OpenCV for faster encoding
+    if format.lower() in ['jpg', 'jpeg']:
+        encode_params = [cv2.IMWRITE_JPEG_QUALITY, quality]
+        _, buffer = cv2.imencode('.jpg', image, encode_params)
+        mime_type = 'image/jpeg'
     else:
-        # Color - convert from BGR to RGB
-        rgb_image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-        pil_image = Image.fromarray(rgb_image)
+        # PNG with fast compression
+        encode_params = [cv2.IMWRITE_PNG_COMPRESSION, 3]  # 0-9, lower is faster
+        _, buffer = cv2.imencode('.png', image, encode_params)
+        mime_type = 'image/png'
     
-    # Encode to base64
-    buffer = io.BytesIO()
-    pil_image.save(buffer, format=format.upper())
-    buffer.seek(0)
-    
-    base64_data = base64.b64encode(buffer.read()).decode('utf-8')
-    mime_type = 'image/png' if format.lower() == 'png' else 'image/jpeg'
-    
+    base64_data = base64.b64encode(buffer).decode('utf-8')
     return f"data:{mime_type};base64,{base64_data}"
 
 
@@ -153,13 +199,15 @@ def get_image_info(filepath: str) -> Dict[str, Any]:
         return {'error': str(e)}
 
 
-def resize_image(image: np.ndarray, max_dimension: int = 1024) -> np.ndarray:
+def resize_image(image: np.ndarray, max_dimension: int = 1024, 
+                 fast_mode: bool = False) -> np.ndarray:
     """
     Resize image if it exceeds maximum dimension while maintaining aspect ratio.
     
     Args:
         image: Input image
         max_dimension: Maximum width or height
+        fast_mode: Use faster but lower quality interpolation
     
     Returns:
         Resized image (or original if within limits)
@@ -169,14 +217,51 @@ def resize_image(image: np.ndarray, max_dimension: int = 1024) -> np.ndarray:
     if max(height, width) <= max_dimension:
         return image
     
-    if width > height:
-        new_width = max_dimension
-        new_height = int(height * max_dimension / width)
-    else:
-        new_height = max_dimension
-        new_width = int(width * max_dimension / height)
+    scale = max_dimension / max(height, width)
+    new_width = int(width * scale)
+    new_height = int(height * scale)
     
-    return cv2.resize(image, (new_width, new_height), interpolation=cv2.INTER_AREA)
+    # Choose interpolation based on scaling direction and mode
+    if fast_mode:
+        interpolation = cv2.INTER_NEAREST
+    elif scale < 1:
+        interpolation = cv2.INTER_AREA  # Best for downscaling
+    else:
+        interpolation = cv2.INTER_LINEAR  # Good for upscaling
+    
+    return cv2.resize(image, (new_width, new_height), interpolation=interpolation)
+
+
+def resize_for_processing(image: np.ndarray, max_pixels: int = 2000000) -> Tuple[np.ndarray, float]:
+    """
+    Resize image for faster processing, return scale factor for later upscaling.
+    
+    Args:
+        image: Input image
+        max_pixels: Maximum number of pixels (default ~1400x1400)
+    
+    Returns:
+        Tuple of (resized_image, scale_factor)
+    """
+    height, width = image.shape[:2]
+    pixels = height * width
+    
+    if pixels <= max_pixels:
+        return image, 1.0
+    
+    scale = np.sqrt(max_pixels / pixels)
+    new_size = (int(width * scale), int(height * scale))
+    resized = cv2.resize(image, new_size, interpolation=cv2.INTER_AREA)
+    
+    return resized, scale
+
+
+def clear_image_cache() -> None:
+    """Clear the image cache to free memory."""
+    global _cache_size_bytes
+    with _cache_lock:
+        _image_cache.clear()
+        _cache_size_bytes = 0
 
 
 def crop_image(image: np.ndarray, x: int, y: int, 

@@ -1,14 +1,44 @@
 """
-Image filtering routes.
+Image filtering routes with performance optimizations.
 """
 from flask import Blueprint, request, jsonify
 import numpy as np
+import hashlib
+from functools import lru_cache
+import threading
 
 from app.routes.image_routes import get_image_store
 from app.models.ImageProcessor import ImageProcessor
-from app.utils.image_utils import load_image, image_to_base64
+from app.utils.image_utils import load_image, image_to_base64, resize_for_processing
 
 filter_bp = Blueprint('filters', __name__)
+
+# Result cache for filter operations
+_filter_cache = {}
+_filter_cache_lock = threading.Lock()
+_MAX_FILTER_CACHE = 100
+
+
+def _get_filter_cache_key(image_id: str, filter_type: str, params: dict) -> str:
+    """Generate cache key for filter result."""
+    param_str = str(sorted(params.items()))
+    return hashlib.md5(f"{image_id}_{filter_type}_{param_str}".encode()).hexdigest()
+
+
+def _get_cached_result(cache_key: str) -> str:
+    """Get cached filter result if available."""
+    with _filter_cache_lock:
+        return _filter_cache.get(cache_key)
+
+
+def _cache_result(cache_key: str, result: str) -> None:
+    """Cache filter result."""
+    with _filter_cache_lock:
+        if len(_filter_cache) >= _MAX_FILTER_CACHE:
+            # Remove oldest entry
+            oldest_key = next(iter(_filter_cache))
+            del _filter_cache[oldest_key]
+        _filter_cache[cache_key] = result
 
 # Available filters with their parameters
 AVAILABLE_FILTERS = {
@@ -97,12 +127,13 @@ def get_available_filters():
 @filter_bp.route('/apply', methods=['POST'])
 def apply_filter():
     """
-    Apply a filter to an image.
+    Apply a filter to an image with caching support.
     
     Request JSON:
         - image_id: Image identifier
         - filter_type: Type of filter to apply
         - params: Filter-specific parameters (optional)
+        - use_cache: Whether to use cached results (default True)
     
     Returns:
         Base64 encoded filtered image
@@ -118,9 +149,24 @@ def apply_filter():
     image_id = data['image_id']
     filter_type = data['filter_type']
     params = data.get('params', {})
+    use_cache = data.get('use_cache', True)
     
     if filter_type not in AVAILABLE_FILTERS:
         return jsonify({'error': f'Unknown filter type: {filter_type}'}), 400
+    
+    # Check cache first
+    cache_key = _get_filter_cache_key(image_id, filter_type, params)
+    if use_cache:
+        cached = _get_cached_result(cache_key)
+        if cached:
+            return jsonify({
+                'success': True,
+                'image_id': image_id,
+                'filter_type': filter_type,
+                'params': params,
+                'result_image': cached,
+                'cached': True
+            })
     
     image_store = get_image_store()
     
@@ -143,12 +189,17 @@ def apply_filter():
     
     result_base64 = image_to_base64(result)
     
+    # Cache the result
+    if use_cache:
+        _cache_result(cache_key, result_base64)
+    
     return jsonify({
         'success': True,
         'image_id': image_id,
         'filter_type': filter_type,
         'params': params,
-        'result_image': result_base64
+        'result_image': result_base64,
+        'cached': False
     })
 
 

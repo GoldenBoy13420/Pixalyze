@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import { imageAPI, histogramAPI, filterAPI, fourierAPI, noiseAPI } from '../services/api'
+import { imageAPI, histogramAPI, filterAPI, fourierAPI, noiseAPI, cancelAllRequests, clearCache } from '../services/api'
 import toast from 'react-hot-toast'
 
 const useStore = create((set, get) => ({
@@ -21,11 +21,28 @@ const useStore = create((set, get) => ({
   setComparisonMode: (mode) => set({ comparisonMode: mode }),
   setLoading: (loading) => set({ isLoading: loading }),
   
-  // Image actions
-  uploadImage: async (file) => {
+  // Reset state and cancel pending requests
+  resetState: () => {
+    cancelAllRequests()
+    clearCache()
+    set({
+      currentImage: null,
+      processedImage: null,
+      imageHistory: [],
+      histogram: null,
+      fftData: null,
+      isLoading: false
+    })
+  },
+  
+  // Image actions with optimized upload
+  uploadImage: async (file, onProgress) => {
+    // Cancel any pending requests first
+    cancelAllRequests()
+    
     set({ isLoading: true })
     try {
-      const result = await imageAPI.upload(file)
+      const result = await imageAPI.upload(file, onProgress)
       const imageUrl = await imageAPI.get(result.image_id)
       
       const imageData = {
@@ -154,19 +171,31 @@ const useStore = create((set, get) => ({
     try {
       const result = await filterAPI.apply(currentImage.id, filterType, params)
       
+      // Skip update if request was cancelled
+      if (result.cancelled) return
+      
       const processedData = {
         url: result.result_image,
         filterType,
-        params
+        params,
+        cached: result.cached
       }
       
       set({ processedImage: processedData })
       addToHistory(processedData, `Filter: ${filterType}`)
-      toast.success(`Applied ${filterType} filter`)
+      
+      // Show different message if result was cached
+      if (result.cached) {
+        toast.success(`Applied ${filterType} filter (cached)`)
+      } else {
+        toast.success(`Applied ${filterType} filter`)
+      }
       return result
     } catch (error) {
-      toast.error(error.message)
-      throw error
+      if (!error.cancelled) {
+        toast.error(error.message)
+        throw error
+      }
     } finally {
       set({ isLoading: false })
     }

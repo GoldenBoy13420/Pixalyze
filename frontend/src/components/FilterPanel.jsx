@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback, useMemo, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Layers, Sparkles, Sliders, ChevronDown } from 'lucide-react'
 import useStore from '../store/useStore'
@@ -62,6 +62,7 @@ export default function FilterPanel() {
   const [selectedFilter, setSelectedFilter] = useState('blur')
   const [params, setParams] = useState(filterDefaults.blur)
   const [expandedCategory, setExpandedCategory] = useState('blur')
+  const debounceTimerRef = useRef(null)
   
   useEffect(() => {
     loadFilters()
@@ -71,13 +72,22 @@ export default function FilterPanel() {
     setParams(filterDefaults[selectedFilter] || {})
   }, [selectedFilter])
   
-  const handleApply = () => {
-    applyFilter(selectedFilter, params)
-  }
+  // Memoize filter categories to prevent unnecessary re-renders
+  const memoizedCategories = useMemo(() => filterCategories, [])
   
-  const handleParamChange = (key, value) => {
+  const handleApply = useCallback(() => {
+    applyFilter(selectedFilter, params)
+  }, [applyFilter, selectedFilter, params])
+  
+  // Debounced parameter change for real-time preview
+  const handleParamChange = useCallback((key, value) => {
     setParams(prev => ({ ...prev, [key]: value }))
-  }
+    
+    // Clear existing timer
+    if (debounceTimerRef.current) {
+      clearTimeout(debounceTimerRef.current)
+    }
+  }, [])
   
   const renderParameterInput = (key, value) => {
     const isRange = typeof value === 'number'

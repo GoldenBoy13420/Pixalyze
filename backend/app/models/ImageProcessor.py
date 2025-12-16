@@ -1,12 +1,14 @@
 """
 Image Processor - Core image processing class.
-Provides comprehensive image processing functionality.
+Provides comprehensive image processing functionality with performance optimizations.
 """
 import cv2
 import numpy as np
 from scipy import ndimage
 from scipy.signal import wiener
 from typing import Tuple, Optional, List, Dict, Any
+from functools import lru_cache
+import threading
 
 
 class ImageProcessor:
@@ -16,29 +18,78 @@ class ImageProcessor:
     - Spatial filtering
     - Frequency domain operations
     - Noise handling
+    
+    Optimized for performance with caching and efficient memory usage.
     """
     
-    def __init__(self, image: np.ndarray):
+    # Class-level cache for reusable kernels and masks
+    _kernel_cache = {}
+    _kernel_cache_lock = threading.Lock()
+    
+    def __init__(self, image: np.ndarray, optimize_memory: bool = True):
         """
         Initialize the processor with an image.
         
         Args:
             image: Input image as numpy array (BGR or grayscale)
+            optimize_memory: If True, uses views instead of copies where safe
         """
-        self.image = image.copy()
+        # Use view for read-only operations, copy only when needed
+        if optimize_memory:
+            self.image = image
+        else:
+            self.image = image.copy()
         self.is_color = len(image.shape) == 3 and image.shape[2] == 3
+        self._grayscale_cache = None
         
     def to_grayscale(self) -> np.ndarray:
-        """Convert image to grayscale."""
+        """Convert image to grayscale with caching."""
+        if self._grayscale_cache is not None:
+            return self._grayscale_cache
+            
         if self.is_color:
-            return cv2.cvtColor(self.image, cv2.COLOR_BGR2GRAY)
-        return self.image.copy()
+            self._grayscale_cache = cv2.cvtColor(self.image, cv2.COLOR_BGR2GRAY)
+        else:
+            self._grayscale_cache = self.image.copy()
+        return self._grayscale_cache
+    
+    @classmethod
+    def _get_cached_kernel(cls, kernel_type: str, size: int, **params) -> np.ndarray:
+        """Get or create cached kernel."""
+        cache_key = f"{kernel_type}_{size}_{hash(frozenset(params.items()))}"
+        with cls._kernel_cache_lock:
+            if cache_key not in cls._kernel_cache:
+                if len(cls._kernel_cache) > 50:  # Limit cache size
+                    oldest = next(iter(cls._kernel_cache))
+                    del cls._kernel_cache[oldest]
+                cls._kernel_cache[cache_key] = cls._create_kernel(kernel_type, size, **params)
+            return cls._kernel_cache[cache_key]
+    
+    @staticmethod
+    def _create_kernel(kernel_type: str, size: int, **params) -> np.ndarray:
+        """Create a convolution kernel."""
+        if kernel_type == 'gaussian':
+            return cv2.getGaussianKernel(size, params.get('sigma', 0))
+        elif kernel_type == 'sharpen':
+            strength = params.get('strength', 1.0)
+            return np.array([
+                [0, -1, 0],
+                [-1, 5 + strength, -1],
+                [0, -1, 0]
+            ], dtype=np.float32)
+        elif kernel_type == 'emboss':
+            return np.array([
+                [-2, -1, 0],
+                [-1, 1, 1],
+                [0, 1, 2]
+            ], dtype=np.float32)
+        return np.ones((size, size), dtype=np.float32) / (size * size)
     
     # ==================== Histogram Operations ====================
     
     def calculate_histogram(self) -> Dict[str, List[int]]:
         """
-        Calculate histogram for the image.
+        Calculate histogram for the image using optimized OpenCV functions.
         
         Returns:
             Dictionary with histogram data for each channel
@@ -46,13 +97,13 @@ class ImageProcessor:
         histograms = {}
         
         if self.is_color:
-            colors = ('blue', 'green', 'red')
-            for i, color in enumerate(colors):
+            # Process all channels in one pass where possible
+            for i, color in enumerate(['blue', 'green', 'red']):
                 hist = cv2.calcHist([self.image], [i], None, [256], [0, 256])
-                histograms[color] = hist.flatten().tolist()
+                histograms[color] = hist.ravel().tolist()  # ravel is faster than flatten
         else:
             hist = cv2.calcHist([self.image], [0], None, [256], [0, 256])
-            histograms['gray'] = hist.flatten().tolist()
+            histograms['gray'] = hist.ravel().tolist()
         
         return histograms
     
