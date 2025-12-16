@@ -1,9 +1,9 @@
 {
-  "name": "image-processing-gui",
+  "name": "pixalyze",
   "private": true,
   "version": "1.0.0",
   "type": "module",
-  "description": "Creative Image Processing GUI - React + Flask",
+  "description": "Pixalyze - Advanced Image Processing & Analysis Tool",
   "scripts": {
     "dev": "vite",
     "build": "vite build",

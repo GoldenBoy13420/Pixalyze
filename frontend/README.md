@@ -1,6 +1,6 @@
-# Image Processing GUI - Frontend
+# Pixalyze Frontend
 
-A beautiful, modern React frontend for the Image Processing application.
+A beautiful, modern React frontend for the Pixalyze image processing and analysis application.
 
 ## Features
 

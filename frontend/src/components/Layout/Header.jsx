@@ -30,10 +30,10 @@ export default function Header() {
           </motion.div>
           <div className="hidden sm:block">
             <h1 className="text-xl font-bold gradient-text flex items-center gap-2">
-              ImageFX Studio
+              Pixalyze
               <Sparkles className="w-4 h-4 text-accent-400" />
             </h1>
-            <p className="text-xs text-dark-400">Creative Image Processing</p>
+            <p className="text-xs text-dark-400">Image Processing & Analysis</p>
           </div>
         </Link>
         

@@ -1,10 +1,10 @@
-# 🎨 ImageFX Studio
+# 🔬 Pixalyze
 
 <div align="center">
 
-![ImageFX Studio](https://img.shields.io/badge/ImageFX-Studio-gradient?style=for-the-badge&logo=image&logoColor=white)
+![Pixalyze](https://img.shields.io/badge/Pixalyze-Image%20Analysis-gradient?style=for-the-badge&logo=image&logoColor=white)
 
-**A modern, powerful image processing application with React frontend and Flask backend**
+**A modern, powerful image processing and analysis application with React frontend and Flask backend**
 
 [![React](https://img.shields.io/badge/React-18.2-61dafb?style=flat-square&logo=react)](https://reactjs.org/)
 [![Flask](https://img.shields.io/badge/Flask-2.3-000?style=flat-square&logo=flask)](https://flask.palletsprojects.com/)

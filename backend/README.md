@@ -1,6 +1,6 @@
-# Image Processing Backend
+# Pixalyze Backend
 
-Flask-based REST API for image processing operations.
+Flask-based REST API for Pixalyze image processing and analysis operations.
 
 ## Features
 
