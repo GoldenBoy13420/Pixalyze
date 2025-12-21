@@ -1,8 +1,8 @@
 """
 WSGI entry point for production deployment.
 """
-from main import create_app
-from config import ProductionConfig
+from backend.main import create_app
+from backend.config import ProductionConfig
 
 app = create_app(ProductionConfig)
 
