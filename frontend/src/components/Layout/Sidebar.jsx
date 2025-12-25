@@ -1,19 +1,17 @@
 import { motion } from 'framer-motion'
 import { 
-  Upload, 
   BarChart3, 
   Layers, 
   Radio, 
   Volume2,
-  Settings,
   ChevronLeft,
   ChevronRight
 } from 'lucide-react'
 import { useState } from 'react'
 import useStore from '../../store/useStore'
 
+// Removed Upload tab - upload is only on home page now
 const tabs = [
-  { id: 'upload', label: 'Upload', icon: Upload, color: 'from-blue-500 to-cyan-500' },
   { id: 'histogram', label: 'Histogram', icon: BarChart3, color: 'from-emerald-500 to-teal-500' },
   { id: 'filters', label: 'Filters', icon: Layers, color: 'from-violet-500 to-purple-500' },
   { id: 'fourier', label: 'Fourier', icon: Radio, color: 'from-orange-500 to-red-500' },
@@ -22,14 +20,15 @@ const tabs = [
 
 export default function Sidebar() {
   const [isExpanded, setIsExpanded] = useState(true)
-  const { activeTab, setActiveTab, currentImage } = useStore()
+  const { activeTab, setActiveTab } = useStore()
   
   const toggleSidebar = () => setIsExpanded(!isExpanded)
   
   return (
     <motion.aside
-      initial={false}
-      animate={{ width: isExpanded ? 256 : 80 }}
+      initial={{ x: -256, opacity: 0 }}
+      animate={{ x: 0, opacity: 1, width: isExpanded ? 256 : 80 }}
+      exit={{ x: -256, opacity: 0 }}
       transition={{ duration: 0.3, ease: 'easeInOut' }}
       className="fixed left-0 top-16 bottom-0 glass border-r border-dark-800/50 
                  flex flex-col z-40 overflow-hidden"
@@ -51,7 +50,6 @@ export default function Sidebar() {
           {tabs.map((tab, index) => {
             const Icon = tab.icon
             const isActive = activeTab === tab.id
-            const isDisabled = tab.id !== 'upload' && !currentImage
             
             return (
               <motion.button
@@ -59,16 +57,14 @@ export default function Sidebar() {
                 initial={{ x: -20, opacity: 0 }}
                 animate={{ x: 0, opacity: 1 }}
                 transition={{ delay: index * 0.05 }}
-                onClick={() => !isDisabled && setActiveTab(tab.id)}
-                disabled={isDisabled}
+                onClick={() => setActiveTab(tab.id)}
                 className={`
                   w-full flex items-center gap-3 px-4 py-3 rounded-xl
-                  transition-all duration-200 group relative overflow-hidden
+                  transition-all duration-200 group relative overflow-hidden cursor-pointer
                   ${isActive 
                     ? 'bg-gradient-to-r ' + tab.color + ' text-white shadow-lg' 
                     : 'text-dark-400 hover:text-dark-100 hover:bg-dark-800/50'
                   }
-                  ${isDisabled ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'}
                 `}
               >
                 {/* Background glow effect */}
@@ -116,7 +112,7 @@ export default function Sidebar() {
           className="text-center"
         >
           <p className="text-xs text-dark-500">
-            ImageFX Studio v1.0
+            Pixalyze v1.0
           </p>
           <p className="text-xs text-dark-600 mt-1">
             Powered by Flask + React

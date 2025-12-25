@@ -1,8 +1,11 @@
 import { create } from 'zustand'
+import { persist } from 'zustand/middleware'
 import { imageAPI, histogramAPI, filterAPI, fourierAPI, noiseAPI, cancelAllRequests, clearCache } from '../services/api'
 import toast from 'react-hot-toast'
 
-const useStore = create((set, get) => ({
+const useStore = create(
+  persist(
+    (set, get) => ({
   // State
   currentImage: null,
   processedImage: null,
@@ -15,11 +18,108 @@ const useStore = create((set, get) => ({
   noiseTypes: null,
   denoiseMethods: null,
   comparisonMode: false,
+  savedImages: [],
   
   // Actions
   setActiveTab: (tab) => set({ activeTab: tab }),
   setComparisonMode: (mode) => set({ comparisonMode: mode }),
   setLoading: (loading) => set({ isLoading: loading }),
+  
+  // Saved images actions
+  saveCurrentImage: async () => {
+    const { processedImage, currentImage, imageHistory } = get()
+    const imageToSave = processedImage || currentImage
+    
+    if (!imageToSave) {
+      toast.error('No image to save')
+      return
+    }
+    
+    const lastOperation = imageHistory.length > 0 
+      ? imageHistory[imageHistory.length - 1]?.operation 
+      : 'Original'
+    
+    try {
+      // Convert image URL to base64 for persistent storage
+      const response = await fetch(imageToSave.url)
+      const blob = await response.blob()
+      const base64 = await new Promise((resolve) => {
+        const reader = new FileReader()
+        reader.onloadend = () => resolve(reader.result)
+        reader.readAsDataURL(blob)
+      })
+      
+      const newSavedImage = {
+        id: Date.now(),
+        url: base64,
+        name: currentImage?.filename || `Image_${Date.now()}`,
+        operation: lastOperation,
+        width: currentImage?.width || 0,
+        height: currentImage?.height || 0,
+        timestamp: Date.now()
+      }
+      
+      set((state) => ({
+        savedImages: [...state.savedImages, newSavedImage]
+      }))
+      
+      toast.success('Image saved to Home!')
+    } catch (error) {
+      toast.error('Failed to save image')
+      console.error('Save error:', error)
+    }
+  },
+  
+  removeSavedImage: (id) => {
+    set((state) => ({
+      savedImages: state.savedImages.filter((img) => img.id !== id)
+    }))
+    toast.success('Image removed')
+  },
+  
+  clearSavedImages: () => {
+    set({ savedImages: [] })
+    toast.success('All saved images cleared')
+  },
+  
+  loadSavedImage: async (image) => {
+    // For saved images, we need to re-upload to the backend
+    try {
+      set({ isLoading: true })
+      
+      // Convert base64 back to file
+      const response = await fetch(image.url)
+      const blob = await response.blob()
+      const file = new File([blob], image.name || 'saved_image.png', { type: blob.type })
+      
+      // Upload to backend
+      const result = await imageAPI.upload(file)
+      const imageUrl = await imageAPI.get(result.image_id)
+      
+      set({
+        currentImage: {
+          id: result.image_id,
+          filename: image.name,
+          url: imageUrl,
+          width: result.width,
+          height: result.height,
+          channels: result.channels
+        },
+        processedImage: null,
+        histogram: null,
+        fftData: null,
+        imageHistory: [],
+        activeTab: 'histogram',
+        isLoading: false
+      })
+      
+      toast.success('Image loaded!')
+    } catch (error) {
+      set({ isLoading: false })
+      toast.error('Failed to load image')
+      console.error('Load error:', error)
+    }
+  },
   
   // Reset state and cancel pending requests
   resetState: () => {
@@ -337,6 +437,12 @@ const useStore = create((set, get) => ({
     document.body.removeChild(link)
     toast.success('Image downloaded!')
   }
-}))
+}),
+    {
+      name: 'pixalyze-storage',
+      partialize: (state) => ({ savedImages: state.savedImages })
+    }
+  )
+)
 
 export default useStore

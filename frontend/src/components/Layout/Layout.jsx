@@ -1,8 +1,15 @@
-import { motion } from 'framer-motion'
+import { motion, AnimatePresence } from 'framer-motion'
+import { useLocation } from 'react-router-dom'
 import Header from './Header'
 import Sidebar from './Sidebar'
+import useStore from '../../store/useStore'
 
 export default function Layout({ children }) {
+  const { currentImage } = useStore()
+  const location = useLocation()
+  const isEditorPage = location.pathname === '/editor'
+  const showSidebar = isEditorPage && currentImage
+  
   return (
     <div className="min-h-screen flex flex-col noise-bg">
       {/* Animated background gradient */}
@@ -16,9 +23,12 @@ export default function Layout({ children }) {
       <Header />
       
       <div className="flex flex-1 pt-16">
-        <Sidebar />
+        {/* Only show sidebar on editor page when image is uploaded */}
+        <AnimatePresence>
+          {showSidebar && <Sidebar />}
+        </AnimatePresence>
         
-        <main className="flex-1 ml-20 lg:ml-64 p-6 overflow-auto">
+        <main className={`flex-1 p-6 overflow-auto transition-all duration-300 ${showSidebar ? 'ml-20 lg:ml-64' : 'ml-0'}`}>
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}

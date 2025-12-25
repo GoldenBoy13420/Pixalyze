@@ -49,9 +49,6 @@ export default function ImageUpload() {
           <Upload className="w-8 h-8 text-white" />
         </motion.div>
         <h2 className="text-2xl font-bold text-white mb-2">Upload Your Image</h2>
-        <p className="text-dark-400 max-w-md mx-auto">
-          Drop your image here or click to browse. Supports PNG, JPG, GIF, BMP, and TIFF formats.
-        </p>
       </div>
       
       {/* Dropzone */}
@@ -177,27 +174,6 @@ export default function ImageUpload() {
           </div>
         </div>
       </motion.div>
-      
-      {/* Features */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-8">
-        {[
-          { icon: '🔒', title: 'Private', desc: 'All processing happens locally' },
-          { icon: '⚡', title: 'Fast', desc: 'Results in milliseconds' },
-          { icon: '🎨', title: 'Powerful', desc: '20+ image operations' }
-        ].map((feature, i) => (
-          <motion.div
-            key={feature.title}
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.2 + i * 0.1 }}
-            className="p-4 rounded-xl bg-dark-900/30 border border-dark-800 text-center"
-          >
-            <div className="text-2xl mb-2">{feature.icon}</div>
-            <h3 className="font-semibold text-dark-200">{feature.title}</h3>
-            <p className="text-dark-500 text-sm">{feature.desc}</p>
-          </motion.div>
-        ))}
-      </div>
     </div>
   )
 }

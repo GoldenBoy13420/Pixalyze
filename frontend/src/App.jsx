@@ -1,8 +1,8 @@
-import { Routes, Route } from 'react-router-dom'
+import { Routes, Route, Navigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import Layout from './components/Layout/Layout'
 import Home from './pages/Home'
-import About from './pages/About'
+import Editor from './pages/Editor'
 
 function App() {
   return (
@@ -14,7 +14,9 @@ function App() {
       <Layout>
         <Routes>
           <Route path="/" element={<Home />} />
-          <Route path="/about" element={<About />} />
+          <Route path="/editor" element={<Editor />} />
+          <Route path="/about" element={<Navigate to="/" replace />} />
+          <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </Layout>
     </motion.div>
